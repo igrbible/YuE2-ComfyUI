@@ -1576,7 +1576,10 @@ when this node is not on the graph at all.
 - `max_seconds` -- the length ceiling. `0` works it out from the lyrics. See
   [Song length](#song-length).
 - `vae` -- `standard` for listening, `legacy` to reproduce published benchmark
-  numbers.
+  numbers. `vae-rs-x3-v1` and `vae-rs-x3-v2` are Ruach Studio's
+  [YuE2-VAE-RS x3](https://huggingface.co/goldhub/YuE2-RS-Finetunes/tree/main/VAE-RS)
+  decoders for the same latents (float32, 0.75 GB each, CC BY-NC 4.0), fetched
+  into `ComfyUI/models/vae/` unless `download` is `off`.
 - `device`, `keep_model_loaded` -- where the model runs and whether it stays
   resident between runs.
 - `attention_backend` -- the attention kernel for writing the score and
@@ -1849,6 +1852,7 @@ decoder, not the checkpoint.
 | `YuE2-Vae/model.safetensors` | 0.49 GB | [m-a-p/YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) |
 | `YuE2-Vae-legacy/model.safetensors` | 0.49 GB | [m-a-p/YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) |
 | `YuE2-3B/qwen.tiktoken` | 2.4 MB | [m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) |
+| `vae/YuE2-VAE-RS-x3_v1.safetensors`, `_v2` | 0.75 GB each, only for `vae` at `vae-rs-x3-v1` / `-v2` | [goldhub/YuE2-RS-Finetunes](https://huggingface.co/goldhub/YuE2-RS-Finetunes/tree/main/VAE-RS) |
 
 `YuE2 Write Song` has a model of its own, fetched the same way and only when
 the machine has no GGUF at all:

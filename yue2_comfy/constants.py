@@ -52,6 +52,7 @@ LM_REPO = "m-a-p/YuE2-3B"
 VAE_REPO = "m-a-p/YuE2-Vae"
 VAE_LEGACY_REPO = "m-a-p/YuE2-Vae-legacy"
 REPACK_REPO = "Comfy-Org/YuE2"
+VAE_RS_REPO = "goldhub/YuE2-RS-Finetunes"
 WRITER_REPO = "unsloth/Qwen3.5-4B-GGUF"
 
 MODELS_SUBDIR = "YuE2"
@@ -59,6 +60,7 @@ LM_DIRNAME = "YuE2-3B"
 VAE_DIRNAME = "YuE2-Vae"
 VAE_LEGACY_DIRNAME = "YuE2-Vae-legacy"
 CHECKPOINTS_SUBDIR = "checkpoints"
+VAE_SUBDIR = "vae"
 WRITER_SUBDIR = "LLM"
 
 WEIGHTS_NAME = "model.safetensors"
@@ -104,6 +106,34 @@ Issue #1 was the other ACE-Step file: its diffusion model names itself
 "decoder", which the prefix rule before 0.7.1 took for a VAE. VAE_MARKERS
 stopped that one, and this stops the VAE beside it.
 """
+VAE_RS_RELEASES = {
+    "vae-rs-x3-v1": {"step": "161953", "path": "VAE-RS/YuE2-VAE-RS-x3_v1.safetensors",
+                     "full": "YuE2-VAE-RS-x3_v1-full.safetensors", "bytes": 803071224,
+                     "sha256": "a88c8da0d0913115953196b01aaf770ea128ab224bde090a8f34ee46db3bb039"},
+    "vae-rs-x3-v2": {"step": "155030", "path": "VAE-RS/YuE2-VAE-RS-x3_v2.safetensors",
+                     "full": "YuE2-VAE-RS-x3_v2-full.safetensors", "bytes": 803071224,
+                     "sha256": "114da484c564a265a694f019d0715cde2f87da88815a054f72ce77c5250f1a0c"},
+}
+"""Ruach Studio's YuE2-VAE-RS x3 decoders: m-a-p's Standard decoder grown three
+times over (66.3 M to 200.6 M parameters) and trained on music, with the
+encoder left as Standard's, so the same latents decode through either.
+
+Each is one decoder-only safetensors of 427 float32 tensors in VAE_RS_REPO,
+published with the SHA-256 here; weights CC BY-NC 4.0, the licence of the
+m-a-p weights they adapt. ``step`` is the training step the file's own
+metadata states, and it is what tells v1 from v2 whatever the file is called:
+the two have the same size and the same tensor names. ``full`` is the name of
+the same decoder with Standard's encoder beside it in one file; this pack
+never encodes, so it reads the decoder of either and ignores the encoder."""
+VAE_RS_MARKERS = ("pre.0.conv1.bias", "blocks.0.units.3.conv1.bias",
+                  "blocks.5.units.5.conv2.bias")
+"""Tensor names of the x3 layout that no Oobleck file has.
+
+The units at the latent rate, and the first and last of the new units in the
+blocks. An x3 file names its tensors the way ``yue2_vae_rs.py`` builds them,
+not ``decoder.layers.*``, so VAE_MARKERS never take one for Standard's
+decoder: the strict load would refuse it if they did, but the search would
+then stop on the wrong file."""
 MERGES_BYTES = 2561218
 REPACK_BF16_BYTES = 7799983228
 REPACK_INT8_BYTES = 3960938800
@@ -171,7 +201,11 @@ LM_ALLOW = (WEIGHTS_NAME, MERGES_NAME, CONFIG_NAME, MANIFEST_NAME)
 VAE_ALLOW = (WEIGHTS_NAME, CONFIG_NAME, MANIFEST_NAME)
 
 COT_CHOICES = ("full", "melody", "off")
-VAE_CHOICES = ("standard", "legacy")
+VAE_CHOICES = ("standard", "legacy", "vae-rs-x3-v1", "vae-rs-x3-v2")
+"""m-a-p's two decoders, then Ruach Studio's two YuE2-VAE-RS x3 decoders.
+
+The last two decode the same latents as 'standard' -- Standard's encoder made
+the latent space and was never touched -- and come from VAE_RS_RELEASES."""
 ATTENTION_CHOICES = ("sdpa", "fast", "flash")
 LEGACY_ATTENTION = {"cudnn": "fast"}
 """Attention choices this pack once offered, and what a workflow or a song that still names one gets.

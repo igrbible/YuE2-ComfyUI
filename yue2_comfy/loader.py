@@ -25,7 +25,7 @@ import threading
 from typing import NamedTuple
 
 from . import devices, paths, placement
-from .constants import LM_REPO, MERGES_BYTES, install_command
+from .constants import LM_REPO, MERGES_BYTES, VAE_RS_RELEASES, install_command
 from .discovery import Files, locate  # noqa: F401
 
 log = logging.getLogger(__name__)
@@ -209,6 +209,11 @@ def load_repack(path: str, device, variant: str = "standard", progress=None,
     within the quantization error rather than the same one. Its decoder is
     stored FP16 and is widened, since the decoder runs in FP32 either way.
 
+    The same holds for Ruach Studio's YuE2-VAE-RS decoders, which no repack
+    carries either: without ``decoder_path`` such a run is refused before
+    anything is read, since the repack's decoder would otherwise be built and
+    labelled with the x3 name.
+
     ``decoder_path`` is m-a-p's legacy decoder, which neither build carries.
     With it, the decoder comes from that file through ``load_vae`` and the
     repack's own is never built. Without it a legacy run is refused, and before
@@ -221,6 +226,12 @@ def load_repack(path: str, device, variant: str = "standard", progress=None,
             "Comfy-Org's repack carries only the standard decoder, and this run asked "
             "for the legacy one. It is published by m-a-p alone; set 'download' in "
             "YuE2 Options to 'auto' and the node will fetch it (0.49 GB).")
+    if variant in VAE_RS_RELEASES and not decoder_path:
+        raise ValueError(
+            "Comfy-Org's repack carries only the standard decoder, and this run asked "
+            "for " + variant + ", which is a separate file. Set 'download' in YuE2 "
+            "Options to 'auto' and the node will fetch it (0.75 GB), or put "
+            + VAE_RS_RELEASES[variant]["path"].split("/")[-1] + " into ComfyUI/models/vae.")
 
     import torch
 
@@ -290,7 +301,7 @@ def load_lm(weights_path: str, device):
 
 
 def load_vae(weights_path: str, variant: str = "standard"):
-    """The Oobleck decoder, FP32, on the CPU.
+    """The Oobleck decoder, FP32, on the CPU; or a YuE2-VAE-RS one, see ``load_vae_rs``.
 
     Built on the CPU rather than the meta device: OobleckDecoder wraps every
     convolution in torch.nn.utils.weight_norm, which computes the norm at
@@ -301,6 +312,9 @@ def load_vae(weights_path: str, variant: str = "standard"):
     stage, which is half a gigabyte and about a tenth of a second each way --
     cheaper than holding it on the card while the LM is generating.
     """
+    if variant in VAE_RS_RELEASES:
+        return load_vae_rs(weights_path, variant)
+
     from .vendor.yue2.modeling_vae import YuE2VAE, YuE2VAEConfig
 
     settings = _config_dict(weights_path)
@@ -315,6 +329,71 @@ def load_vae(weights_path: str, variant: str = "standard"):
         config.release_variant, len(state), weights_path,
     )
     model.eval().requires_grad_(False)
+    return model
+
+
+class VaeRsConfig(dict):
+    """A YuE2-VAE-RS decoder's ``config``: its own layout plus the YuE2VAEConfig fields the decode reads.
+
+    The vendored object keeps its layout (units per block, widths) in
+    ``config`` as a dict and reads it back as one, so this stays a dict with
+    those keys untouched. ``generate`` and ``inpaint`` read the tile size, the
+    context each side and the hop from ``vae.config`` as attributes, so those
+    are attributes too.
+
+    The x3 decoder brings its own receptive field: ``decode_halo_frames`` is
+    what it computes for itself, 60 latent frames against Standard's 16, and
+    with fewer its tile seams come back (27 to 51 dB under the music, measured
+    by Ruach Studio). Handed a shorter halo, its ``decode_tiled`` refuses
+    instead of decoding. The tile itself stays the pack's own default, so a
+    song is cut where Standard's is.
+    """
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError as error:
+            raise AttributeError(name) from error
+
+
+def load_vae_rs(weights_path: str, variant: str):
+    """Ruach Studio's YuE2-VAE-RS x3 decoder, FP32, on the CPU.
+
+    Read by the vendored ``yue2_vae_rs.load_decoder``, which is as strict as
+    ``load_vae``: float32 tensors only, the x3 layout and no other, every
+    tensor present and none left over, the metadata checked against the
+    shapes. A '-full' file loads the same way; its encoder is not read, since
+    this pack never encodes. The object decodes with ``decode_tiled`` like
+    m-a-p's and needs no weight norm hook: the norm is folded into the weights
+    at load, which is why ``_forget_computed_weights`` finds nothing on it.
+
+    The training step in the file's metadata has to be the one of the release
+    the run asked for. The two releases are the same size with the same tensor
+    names, so without this a v2 file renamed to v1's name would decode as v2
+    under v1's name.
+    """
+    from .vendor.yue2.modeling_vae import YuE2VAEConfig
+    from .vendor.yue2_vae_rs.yue2_vae_rs import (AUDIO_CHANNELS, HOP, LATENT_DIM, SAMPLE_RATE, DecoderError,
+                                                 load_decoder)
+
+    release = VAE_RS_RELEASES[variant]
+    try:
+        model = load_decoder(weights_path, device="cpu", allow_standard=False)
+    except DecoderError as error:
+        raise ValueError("{} is not the {} decoder: {}".format(weights_path, variant, error)) from error
+    step = str(model.metadata.get("step", ""))
+    if step != release["step"]:
+        raise ValueError(
+            "{} is a YuE2-VAE-RS x3 decoder of training step {}, and this run asked for {}, "
+            "which is step {}. Pick the matching choice in 'vae', or put the right file "
+            "in ComfyUI/models/vae.".format(weights_path, step or "(not stated)", variant, release["step"]))
+    model.config = VaeRsConfig(model.config, release_variant=variant,
+                               decode_core_frames=int(YuE2VAEConfig().decode_core_frames),
+                               decode_halo_frames=int(model.required_halo()),
+                               downsampling_ratio=HOP, audio_channels=AUDIO_CHANNELS,
+                               sample_rate=SAMPLE_RATE, latent_dim=LATENT_DIM)
+    log.info("[yue2_comfy.loader] VAE (%s): YuE2-VAE-RS x3, %d parameters, halo %d, from %s",
+             variant, model.parameter_count(), model.config.decode_halo_frames, weights_path)
     return model
 
 

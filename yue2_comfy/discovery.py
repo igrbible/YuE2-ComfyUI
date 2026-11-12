@@ -47,7 +47,8 @@ from .constants import (
     LM_BYTES, LM_DIRNAME, MERGES_BYTES, MERGES_NAME, REPACK_BF16_BYTES,
     REPACK_BF16_NAME, REPACK_INT8_BYTES, REPACK_INT8_NAME, REPACK_REPO,
     SHEETSAGE_BYTES, SHEETSAGE_MARKERS, SHEETSAGE_NAME, SHEETSAGE_PATH,
-    VAE_BYTES, VAE_DIRNAME, VAE_LEGACY_DIRNAME, VAE_MARKERS, VAE_SIGNATURE, VOCALS_BYTES,
+    VAE_BYTES, VAE_DIRNAME, VAE_LEGACY_DIRNAME, VAE_MARKERS, VAE_RS_MARKERS, VAE_RS_RELEASES, VAE_RS_REPO,
+    VAE_SIGNATURE, VOCALS_BYTES,
     VOCALS_KNOWN_BYTES, VOCALS_MARKERS, VOCALS_NAME, VOCALS_REPO, VOCALS_REVISION, WEIGHTS_NAME,
     WHISPER_BYTES, WHISPER_DIRNAME, WHISPER_FILES, WHISPER_GENERATION_NAME, WHISPER_REPO, WHISPER_TOKENIZER_NAME,
 )
@@ -77,6 +78,10 @@ class Files(NamedTuple):
     with ``vae`` set as well, for the legacy decoder, which only m-a-p publish.
     Then the backbone and the vocabulary come from the repack, the decoder from
     ``vae``, and the repack's own decoder is never built.
+
+    ``vae`` set beside either of the first two shapes is also how a
+    YuE2-VAE-RS run carries its decoder: ``download.ensure`` finds the
+    backbone as for 'standard' and puts the x3 file in ``vae``.
 
     The third shape exists because the second was being thrown away: a machine
     with the repack that asked for the legacy decoder downloaded m-a-p's 6.7 GB
@@ -488,6 +493,85 @@ def _where(roots: list) -> list:
         "Set " + paths.ENV_ROOT + " to point at a folder you keep them in, if it is "
         "none of the above.",
     ]
+
+
+def vae_rs_release(path: str) -> str:
+    """The VAE_CHOICES name of the YuE2-VAE-RS release in a file, or "".
+
+    Read from the header alone: the x3 tensor names, then the training step
+    the file's metadata states, which is the only thing that tells v1 from v2.
+    The '-full' files carry the same decoder, under the same names and the
+    same metadata, beside Standard's encoder, and are recognised the same way.
+    A file with the x3 names but another step is somebody's own checkpoint,
+    not a release, and is passed over rather than guessed at.
+    """
+    from .loader import read_header
+
+    try:
+        header = read_header(path)
+    except Exception:
+        log.debug("[yue2_comfy.discovery] cannot read %s", path, exc_info=True)
+        return ""
+    if not all(marker in header for marker in VAE_RS_MARKERS):
+        return ""
+    meta = header.get("__metadata__") or {}
+    if meta.get("variant", "x3") != "x3":
+        return ""
+    for name, release in VAE_RS_RELEASES.items():
+        if str(meta.get("step", "")) == release["step"]:
+            return name
+    return ""
+
+
+def find_vae_rs(variant: str, roots=None) -> str:
+    """A YuE2-VAE-RS decoder for ``variant``, by its published names first and its header second, or "".
+
+    The decoder-only file wins over the '-full' one when both are here, since
+    the decode reads nothing else. Every candidate is confirmed by its header
+    even when the name matches, because the two releases are the same size and
+    a file renamed by hand would otherwise pass for the other one.
+    """
+    release = VAE_RS_RELEASES.get(variant)
+    if release is None:
+        return ""
+    roots = paths.search_roots() if roots is None else roots
+    names = (os.path.basename(release["path"]), release["full"])
+    for name in names:
+        for root in roots:
+            for home in _homes(root):
+                candidate = os.path.join(home, name)
+                if os.path.isfile(candidate) and vae_rs_release(candidate) == variant:
+                    return candidate
+    for root in roots:
+        for home in _homes(root):
+            try:
+                entries = sorted(os.listdir(home))
+            except OSError:
+                continue
+            for entry in entries:
+                candidate = os.path.join(home, entry)
+                if (entry.lower().endswith(".safetensors") and entry not in names
+                        and os.path.isfile(candidate) and vae_rs_release(candidate) == variant):
+                    return candidate
+    return ""
+
+
+def vae_rs_missing_message(variant: str, dest: str, roots=None) -> str:
+    """Where a missing YuE2-VAE-RS decoder comes from and where it goes, for 'download' at 'off'."""
+    release = VAE_RS_RELEASES[variant]
+    roots = paths.search_roots() if roots is None else roots
+    lines = [
+        "The YuE2-VAE-RS decoder '{}' is not on this machine yet. It is one file "
+        "({:.2f} GB, float32), published by Ruach Studio:".format(variant, release["bytes"] / 1024 ** 3),
+        "",
+        "  " + _link(VAE_RS_REPO, release["path"]),
+        "  -> " + dest,
+        "",
+        "SHA-256 " + release["sha256"] + ". The '-full' file of the same release, "
+        + release["full"] + ", works too.",
+        "",
+    ]
+    return "\n".join(lines + _where(roots))
 
 
 def find_sheetsage(roots=None) -> str:

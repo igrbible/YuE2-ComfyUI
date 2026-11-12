@@ -19,7 +19,7 @@ from .constants import (
     DEFAULT_OPTIONS, DEFAULT_STYLE, DOWNLOAD_CHOICES, LANGUAGE_CHOICES, LEGACY_ATTENTION,
     LORA_INPUT_TOOLTIP, LORA_TYPE, LYRICS_TOOLTIP, MAX_SECONDS, OFFLOAD_CHOICES, OPTIONS_TYPE,
     QUANTIZATION_CHOICES, SAMPLE_RATE, SEED_TOOLTIP, STYLE_TOOLTIP, TRANSPOSE_LIMIT, VAE_CHOICES, WRITER_AUTO,
-    WRITER_LENGTH_CHOICES,
+    VAE_RS_RELEASES, WRITER_LENGTH_CHOICES,
     WRITER_LENGTH_DEFAULT, WRITER_LENGTH_LINES, WRITER_MAX_NEW_TOKENS,
     WRITER_REPETITION_PENALTY, WRITER_TEMPERATURE, WRITER_TOP_K, WRITER_TOP_P,
     auto_seconds, length_lines,
@@ -127,7 +127,13 @@ VAE_TOOLTIP = (
     "'standard' is the one released for listening. 'legacy' is the decoder the "
     "published benchmark numbers were measured with; use it only to reproduce those. "
     "They are different weights of the same size, and the same latents decoded by "
-    "each will not sound identical."
+    "each will not sound identical.\n\n"
+    "'vae-rs-x3-v1' and 'vae-rs-x3-v2' are Ruach Studio's YuE2-VAE-RS x3 decoders: "
+    "Standard's decoder grown three times over and trained on music, for the same "
+    "latents. They are aimed at Standard's 100 Hz ripple and its seams at 6 and 12 kHz; "
+    "their waveform fidelity (SI-SDR) is a little lower, and a decode takes about twice "
+    "as long. Float32 only, 0.75 GB each, fetched into ComfyUI/models/vae from "
+    "goldhub/YuE2-RS-Finetunes unless 'download' is 'off'. Weights CC BY-NC 4.0."
 )
 
 KEEP_TOOLTIP = (
@@ -160,6 +166,8 @@ DOWNLOAD_TOOLTIP = (
     "fetched. Comfy-Org's INT8 checkpoint counts only with 'quantization' at 'int8'. "
     "On a machine with nothing yet, 'auto' takes m-a-p's files for 'legacy', the "
     "smaller download.\n\n"
+    "The YuE2-VAE-RS decoders in 'vae' have one source, Ruach Studio's repository, and "
+    "are fetched from it whatever this says, unless it says 'off'.\n\n"
     "'off' downloads nothing and says instead which files are missing, the direct "
     "link to each, and the exact folder to put it in."
 )
@@ -316,12 +324,25 @@ class YuE2Options:
     CATEGORY = CATEGORY
 
     @classmethod
-    def IS_CHANGED(cls, checkpoint="auto", **_inputs):
-        """Replacing explicit weights under the same name invalidates cached plans and songs."""
+    def IS_CHANGED(cls, checkpoint="auto", vae="standard", **_inputs):
+        """Replacing explicit weights under the same name invalidates cached plans and songs.
+
+        A YuE2-VAE-RS decoder is a file of its own beside whichever checkpoint
+        sings, so with 'vae' at one of those its file and stamp are part of the
+        answer too: a decoder replaced under the same name decodes again rather
+        than being served from the cache. Every other choice answers as before.
+        """
+        decoder = None
+        if vae in VAE_RS_RELEASES:
+            from . import discovery
+
+            found = discovery.find_vae_rs(vae)
+            decoder = (found, checkpoints._stamp(found) if found else None)
         if checkpoint == "auto":
-            return "auto"
+            return "auto" if decoder is None else ("auto", decoder)
         path = checkpoints.catalogue().get(checkpoint)
-        return (checkpoint, checkpoints._stamp(path) if path else None)
+        answer = (checkpoint, checkpoints._stamp(path) if path else None)
+        return answer if decoder is None else answer + (decoder,)
 
     @classmethod
     def VALIDATE_INPUTS(cls, attention_backend=DEFAULT_OPTIONS["attention_backend"], checkpoint="auto"):

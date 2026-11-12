@@ -18,11 +18,12 @@ import logging
 import os
 import re
 
-from .constants import AUDIO_ENCODERS_SUBDIR, CHECKPOINTS_SUBDIR, MODELS_SUBDIR, WRITER_SUBDIR
+from .constants import (AUDIO_ENCODERS_SUBDIR, CHECKPOINTS_SUBDIR, MODELS_SUBDIR, VAE_SUBDIR,
+                        WRITER_SUBDIR)
 
 log = logging.getLogger(__name__)
 
-SCAN_FOLDERS = (MODELS_SUBDIR, "diffusion_models", "vae", "LLM", "checkpoints")
+SCAN_FOLDERS = (MODELS_SUBDIR, "diffusion_models", VAE_SUBDIR, "LLM", "checkpoints")
 
 GGUF_SUBDIR = WRITER_SUBDIR
 GGUF_FOLDERS = (WRITER_SUBDIR, "llm", "text_encoders", "clip", "transformers",
@@ -254,6 +255,41 @@ def audio_encoders_root() -> str:
         os.makedirs(registered[0], exist_ok=True)
         return registered[0]
     root = os.path.join(folder_paths.models_dir, AUDIO_ENCODERS_SUBDIR)
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def vae_root() -> str:
+    """ComfyUI/models/vae, where a downloaded YuE2-VAE-RS decoder goes.
+
+    It is where a ComfyUI user looks for a VAE and where Ruach Studio's own
+    node pack reads one, so a single copy serves both, and the search already
+    sweeps it. An existing registered path wins, and without ComfyUI the pack's
+    own root stands in. With YUE2_MODELS_ROOT set it is the vae folder inside
+    that root, where the search and the refusal message look.
+    """
+    folder_paths = _folder_paths()
+    override = _override_root()
+    if override:
+        root = os.path.join(override, VAE_SUBDIR)
+        os.makedirs(root, exist_ok=True)
+        return root
+    if folder_paths is None:
+        return os.path.join(models_root(), VAE_SUBDIR)
+    try:
+        registered = [path for path in folder_paths.get_folder_paths(VAE_SUBDIR)]
+    except KeyError:
+        registered = []
+    for path in registered:
+        try:
+            if os.path.isdir(path):
+                return path
+        except OSError:
+            continue
+    if registered:
+        os.makedirs(registered[0], exist_ok=True)
+        return registered[0]
+    root = os.path.join(folder_paths.models_dir, VAE_SUBDIR)
     os.makedirs(root, exist_ok=True)
     return root
 

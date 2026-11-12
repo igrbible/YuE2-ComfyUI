@@ -580,9 +580,9 @@ class YuE2DecodeLatents:
     DESCRIPTION = (
         "Decodes the latents from 'YuE2 Render Plan' into audio without singing "
         "the song again.\n\n"
-        "What it is for: hearing one performance through the other decoder. "
-        "'standard' and 'legacy' are different weights, and the same latents "
-        "through each do not sound the same."
+        "What it is for: hearing one performance through another decoder. "
+        "'standard', 'legacy' and the two 'vae-rs-x3' decoders are different "
+        "weights, and the same latents through each do not sound the same."
     )
 
     @classmethod

@@ -56,3 +56,26 @@ dashes and arrows, all in comments -- and `abc_tools.py` one, an en dash in an
 error message. Scrubbing them would mean maintaining a fork and making every
 future upstream diff noisy, for no runtime benefit. The ASCII check skips this
 directory.
+
+## yue2_vae_rs/
+
+`yue2_vae_rs/yue2_vae_rs.py` is a verbatim copy of `VAE-RS/kit/yue2_vae_rs.py`
+(version 1.0.0, SHA-256
+`b7fd8baeddbe1f8c5dd9940cc071d9e4dd4a0f137ef695cb8f301396ecfb21a1`) from
+https://huggingface.co/goldhub/YuE2-RS-Finetunes, Ruach Studio's loader and
+decoder for its YuE2-VAE-RS x3 decoders (Apache-2.0). `NOTICE` beside it is
+that kit's notice, which section 4 (d) of the licence asks to travel with the
+code. It needs nothing but torch and safetensors.
+
+The pack reads the x3 decoders through it and nothing else, for two reasons.
+The file layout is its own (`conv1`, `pre`, `blocks`, ...), which the vendored
+`modeling_vae.py` cannot hold: three new residual units at the latent rate and
+three more in each upsampling block. And its `load_decoder` is strict in every
+way the pack's own loader is: float32 tensors only, the x3 shape and no other,
+every tensor present and none left over, the file's metadata checked against
+the shapes. Its decoder object speaks the decode API of `modeling_vae.py`
+(`decode`, `decode_tiled`, `required_halo`, `natural_output_length`), so the
+decode stage runs it unchanged.
+
+`yue2_vae_rs/__init__.py` is this pack's own and only makes the folder a
+package.

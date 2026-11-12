@@ -34,7 +34,7 @@ from .constants import (
     LM_ALLOW, LM_DIRNAME, LM_REPO, PACK, REPACK_BF16_BYTES, REPACK_BF16_NAME,
     REPACK_BF16_PATH, REPACK_INT8_BYTES, REPACK_INT8_NAME, REPACK_INT8_PATH,
     REPACK_REPO, VAE_ALLOW, VAE_DIRNAME, VAE_LEGACY_DIRNAME, VAE_LEGACY_REPO,
-    VAE_REPO, WRITER_AUTO, WRITER_BYTES, WRITER_NAME, WRITER_PATH, WRITER_REPO,
+    VAE_REPO, VAE_RS_RELEASES, VAE_RS_REPO, WRITER_AUTO, WRITER_BYTES, WRITER_NAME, WRITER_PATH, WRITER_REPO,
     WRITER_SUBDIR, install_command,
 )
 
@@ -875,6 +875,54 @@ def source_for(settings: dict) -> str:
 
 def ensure(settings: dict, progress=None):
     """The weights, fetched first if this machine has not got them yet.
+
+    A YuE2-VAE-RS run finds its backbone exactly as a 'standard' run does --
+    the x3 decoders decode Standard's latents, so nothing upstream of the
+    decoder changes -- and then takes its decoder from ``ensure_vae_rs``. Every
+    other run goes through ``_ensure`` alone, as before.
+    """
+    variant = settings.get("vae", "standard")
+    if variant not in VAE_RS_RELEASES:
+        return _ensure(settings, progress)
+    files = _ensure(dict(settings, vae="standard"), progress)
+    return files._replace(vae=ensure_vae_rs(variant, settings, progress))
+
+
+def ensure_vae_rs(variant: str, settings: dict, progress=None) -> str:
+    """A YuE2-VAE-RS decoder's file, fetched from Ruach Studio's repository first if it is not here.
+
+    Whatever 'download' names other than 'off' fetches it, since it has one
+    source only. It goes into ComfyUI/models/vae under its published name and
+    is checked against the SHA-256 published with it before anything reads it;
+    a file that does not match is removed rather than kept, the way ``fetch``
+    treats a file of the wrong size. With 'download' at 'off' the refusal says
+    where the file is and where it goes.
+    """
+    from . import discovery, manifest
+
+    found = discovery.find_vae_rs(variant)
+    if found:
+        return found
+    release = VAE_RS_RELEASES[variant]
+    dest = os.path.join(paths.vae_root(), _safe_name(release["path"]))
+    if settings.get("download", "auto") == "off":
+        raise FileNotFoundError(discovery.vae_rs_missing_message(variant, dest) + (
+            "\n\nOr set 'download' in YuE2 Options to 'auto', and the node will fetch it itself."))
+    fetch(VAE_RS_REPO, {release["path"]: dest},
+          "Downloading YuE2-VAE-RS {} ({})".format(variant[len("vae-rs-"):], human_size(release["bytes"])),
+          progress)
+    if progress is not None:
+        progress.text("Checking " + os.path.basename(dest))
+    got = manifest.digest(dest, cancelled=lambda: bool(_interrupted()))
+    if got != release["sha256"]:
+        os.remove(dest)
+        raise DownloadError("{} arrived with SHA-256 {}, not the published {}. It was removed; run "
+                            "again to fetch it anew.".format(dest, got, release["sha256"]))
+    return dest
+
+
+def _ensure(settings: dict, progress=None):
+    """The backbone and m-a-p's decoders, fetched first if this machine has not got them yet.
 
     Nothing is downloaded when the files are already here, which is the usual
     case after the first run: that costs a few directory listings, not a

@@ -1,6 +1,6 @@
 # Licenses and provenance
 
-This pack carries eleven kinds of material under their own terms.
+This pack carries twelve kinds of material under their own terms.
 
 ## The pack's own code
 
@@ -63,6 +63,17 @@ SnakeBeta (Copyright (c) 2022 NVIDIA CORPORATION, MIT). Those notices travel
 with the model repository and are reproduced in the upstream
 `THIRD_PARTY_NOTICES.md`.
 
+## Vendored YuE2-VAE-RS code
+
+`yue2_comfy/vendor/yue2_vae_rs/yue2_vae_rs.py` is a verbatim copy of
+`VAE-RS/kit/yue2_vae_rs.py` from
+[goldhub/YuE2-RS-Finetunes](https://huggingface.co/goldhub/YuE2-RS-Finetunes),
+Copyright 2026 Viktor Zhuromskyy, Ruach Studio, Apache-2.0. It is not
+modified. Its `NOTICE` travels beside it in the same folder, as section 4 (d)
+of the licence asks, and credits Ruach Studio and Viktor Zhuromskyy. Its
+SnakeBeta activation and Oobleck layout follow the same stable-audio-tools and
+BigVGAN code as m-a-p's, under the notices named above.
+
 ## The example style lines
 
 **No licence.** YuE2's demo site carries none, as its reference code does not.
@@ -116,6 +127,13 @@ downloads them as `sheetsage2_bf16.safetensors` from
 [Comfy-Org/YuE2](https://huggingface.co/Comfy-Org/YuE2), a single-file repack of
 [m-a-p/SheetSage2](https://huggingface.co/m-a-p/SheetSage2), and likewise does
 not redistribute them.
+
+Ruach Studio's YuE2-VAE-RS x3 decoders, which `vae` can choose, are under
+the same CC BY-NC 4.0, as adaptations of m-a-p's YuE2-Vae: credit YuE2 and
+m-a-p, and Ruach Studio for YuE2-VAE-RS. The pack downloads them from
+[goldhub/YuE2-RS-Finetunes](https://huggingface.co/goldhub/YuE2-RS-Finetunes)
+(DOI [10.5281/zenodo.24167962](https://doi.org/10.5281/zenodo.24167962)) and
+likewise does not redistribute them.
 
 `qwen.tiktoken` is deliberately not shipped inside this pack for the same
 reason: it comes from the same non-commercially licensed repository, and the
